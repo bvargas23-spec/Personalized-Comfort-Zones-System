@@ -8,15 +8,20 @@ import json
 import datetime
 import uuid
 import RPi.GPIO as GPIO
-import Adafruit_DHT  # You'll need to install this library: pip install Adafruit_DHT
+import Adafruit_DHT
+import boto3
+from botocore.exceptions import ClientError
+# Fix: Disable IMU check to prevent "Unknown platform" error
+import os
+os.environ['SENSE_HAT_NO_IMU'] = '1'
 from sense_hat import SenseHat
 from awscrt import io, mqtt
 from awsiot import mqtt_connection_builder
-
+   
 # Configuration
 THING_NAME = "PCZS"
 WORKSPACE_ID = "workspace_1"
-ENDPOINT = "a2ao1owrs8g0lu-ats.iot.us-east-2.amazonaws.com"  # Use your endpoint
+ENDPOINT = "a2ao1owrs8g0lu-ats.iot.us-east-2.amazonaws.com"
 CLIENT_ID = f"pczs-integrated-{uuid.uuid4().hex[:8]}"
 CERT_PATH = "/home/smartsys/pczs/cert/"
 CERT_FILE = CERT_PATH + "certificate.pem.crt"
@@ -44,7 +49,6 @@ GPIO.setup(PIR_PIN, GPIO.IN)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
 
 # State
 fan_state = False
@@ -59,6 +63,27 @@ comfort_settings = {
     "humidity_threshold": 10.0,
 }
 
+def get_user_preferences(user_id, workspace_id):
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name='us-east-2')
+        table = dynamodb.Table('PCZS_UserPreferences')
+        response = table.get_item(
+            Key={
+                'user_id': user_id,
+                'workspace_id': workspace_id
+            }
+        )
+        if 'Item' in response:
+            prefs = response['Item']
+            print(f"Retrieved preferences: {prefs}")
+            return prefs
+        else:
+            print("No preferences found, using defaults")
+            return comfort_settings  # Use existing defaults
+    except ClientError as e:
+        print(f"Error retrieving preferences: {e}")
+        return comfort_settings  # Use existing defaults
+
 def detect_occupancy():
     global occupancy, last_motion_time
     motion = GPIO.input(PIR_PIN)
@@ -66,7 +91,6 @@ def detect_occupancy():
         print("Motion detected!")
         occupancy = True
         last_motion_time = time.time()
-        # Visual indicator for occupancy
         sense.show_letter("O", GREEN)
         time.sleep(0.5)
         sense.clear()
@@ -90,35 +114,28 @@ def read_dht22():
 def indicate_comfort_status(temp, humidity):
     pref_temp = comfort_settings["preferred_temp"]
     temp_threshold = comfort_settings["temp_threshold"]
-    
-    # Only show comfort status when workspace is occupied
     if not occupancy:
-        sense.clear()  # Turn off display when unoccupied
+        sense.clear()
         return
-        
     if abs(temp - pref_temp) <= temp_threshold:
-        sense.clear(GREEN)  # Comfortable
+        sense.clear(GREEN)
     elif temp > pref_temp:
-        sense.clear(RED)    # Too hot
+        sense.clear(RED)
     else:
-        sense.clear(BLUE)   # Too cold
+        sense.clear(BLUE)
 
 def control_fan(temp):
     global fan_state
     pref_temp = comfort_settings["preferred_temp"]
     temp_threshold = comfort_settings["temp_threshold"]
-    
-    # Only control fan when workspace is occupied
     if not occupancy:
         if fan_state:
             print("Fan control: Turning fan OFF (unoccupied)")
             fan_state = False
         return fan_state
-    
     if temp > (pref_temp + temp_threshold):
         if not fan_state:
             print("Fan control: Turning fan ON")
-            # Visual indicator for fan state
             sense.show_letter("F", GREEN)
             time.sleep(0.5)
             sense.clear()
@@ -133,34 +150,17 @@ def control_fan(temp):
     return fan_state
 
 def read_sensors():
-    # Check occupancy first
     is_occupied = detect_occupancy()
-    
-    # Read DHT22 sensor (more accurate than SenseHat for temperature/humidity)
     dht_temp, dht_humidity = read_dht22()
-    
-    # Read SenseHat sensors as backup
     sh_temp = sense.get_temperature()
     sh_humidity = sense.get_humidity()
-    
-    # Use DHT22 readings if available, otherwise fall back to SenseHat
-    temperature = dht_temp if dht_temp is not None else sh_temp - 8  # Adjust SenseHat temp
+    temperature = dht_temp if dht_temp is not None else sh_temp - 8
     humidity = dht_humidity if dht_humidity is not None else sh_humidity
-    
-    # Round values
     temperature = round(temperature, 1)
     humidity = round(humidity, 1)
-    
-    # Use LED to indicate comfort status
     indicate_comfort_status(temperature, humidity)
-    
-    # Control fan based on temperature and occupancy
     fan_on = control_fan(temperature)
-    
-    # Timestamp for telemetry
     timestamp = datetime.datetime.now().isoformat()
-
-    # Create payload for MQTT telemetry
     payload = {
         "workspace_id": WORKSPACE_ID,
         "timestamp": timestamp,
@@ -169,8 +169,6 @@ def read_sensors():
         "occupied": is_occupied,
         "fan_state": fan_on
     }
-
-    # Create payload for device shadow
     shadow_payload = {
         "state": {
             "reported": {
@@ -181,32 +179,23 @@ def read_sensors():
             }
         }
     }
-
     return payload, shadow_payload
 
-# Callback when connection is accidentally lost.
 def on_connection_interrupted(connection, error, **kwargs):
     print(f"Connection interrupted: {error}")
 
-# Callback when an interrupted connection is re-established.
 def on_connection_resumed(connection, return_code, session_present, **kwargs):
     print(f"Connection resumed: {return_code}, session_present: {session_present}")
 
-# Callback when a message is received on shadow delta topic
 def on_shadow_delta(topic, payload, dup, qos, retain, **kwargs):
     global comfort_settings
     payload_str = payload.decode('utf-8')
     print(f"Received delta message: {payload_str}")
     try:
         delta = json.loads(payload_str).get("state", {})
-        # Update only the keys that exist in comfort_settings
         comfort_settings.update({k: delta[k] for k in comfort_settings.keys() if k in delta})
         print(f"Updated comfort settings: {comfort_settings}")
-        
-        # Display confirmation on SenseHat
         sense.show_message("Updated", text_colour=GREEN, scroll_speed=0.05)
-        
-        # Update the reported state to match the desired state
         update = {"state": {"reported": comfort_settings}}
         mqtt_connection.publish(
             topic=SHADOW_UPDATE_TOPIC,
@@ -217,24 +206,17 @@ def on_shadow_delta(topic, payload, dup, qos, retain, **kwargs):
         print(f"Error handling delta: {e}")
         sense.show_message("Error", text_colour=RED, scroll_speed=0.05)
 
-# Callback when a message is received on shadow accepted topic
 def on_shadow_accepted(topic, payload, dup, qos, retain, **kwargs):
     payload_str = payload.decode('utf-8')
     print(f"Shadow update accepted: {payload_str}")
 
 def main():
     global mqtt_connection
-
-    # Display startup message
     sense.show_message("PCZS", text_colour=(255, 165, 0), scroll_speed=0.05)
-
     try:
-        # Spin up resources
         event_loop_group = io.EventLoopGroup(1)
         host_resolver = io.DefaultHostResolver(event_loop_group)
         client_bootstrap = io.ClientBootstrap(event_loop_group, host_resolver)
-
-        # Initialize MQTT connection
         mqtt_connection = mqtt_connection_builder.mtls_from_path(
             endpoint=ENDPOINT,
             cert_filepath=CERT_FILE,
@@ -245,31 +227,25 @@ def main():
             clean_session=True,
             keep_alive_secs=30
         )
-
-        # Connect to AWS IoT Core
         print(f"Connecting to {ENDPOINT} with client ID '{CLIENT_ID}'...")
         connect_future = mqtt_connection.connect()
         connect_future.result()
         print("Connected to AWS IoT!")
 
-        # Subscribe to shadow delta and accepted topics
         print(f"Subscribing to {SHADOW_UPDATE_DELTA_TOPIC}...")
-        delta_subscribe_future, _ = mqtt_connection.subscribe(
+        mqtt_connection.subscribe(
             topic=SHADOW_UPDATE_DELTA_TOPIC,
             qos=mqtt.QoS.AT_LEAST_ONCE,
             callback=on_shadow_delta
         )
-        delta_subscribe_future.result()
-        
+
         print(f"Subscribing to {SHADOW_UPDATE_ACCEPTED_TOPIC}...")
-        accepted_subscribe_future, _ = mqtt_connection.subscribe(
+        mqtt_connection.subscribe(
             topic=SHADOW_UPDATE_ACCEPTED_TOPIC,
             qos=mqtt.QoS.AT_LEAST_ONCE,
             callback=on_shadow_accepted
         )
-        accepted_subscribe_future.result()
-        
-        # Report initial comfort settings to shadow
+
         print("Publishing initial comfort settings...")
         mqtt_connection.publish(
             topic=SHADOW_UPDATE_TOPIC,
@@ -277,33 +253,25 @@ def main():
             qos=mqtt.QoS.AT_LEAST_ONCE
         )
 
-        # Main loop
         print("Integrated Sensors Mode Running. Press Ctrl+C to exit.")
         while True:
             telemetry, shadow = read_sensors()
-            
-            # Publish telemetry data
             mqtt_connection.publish(
                 topic=TELEMETRY_TOPIC,
                 payload=json.dumps(telemetry),
                 qos=mqtt.QoS.AT_LEAST_ONCE
             )
-            
-            # Update device shadow
             mqtt_connection.publish(
                 topic=SHADOW_UPDATE_TOPIC,
                 payload=json.dumps(shadow),
                 qos=mqtt.QoS.AT_LEAST_ONCE
             )
-            
             print(f"Published telemetry: {telemetry}")
-            
-            # Check for motion more frequently, but don't flood AWS with messages
-            for i in range(5):  # Check every 2 seconds for motion, but publish only every 10 seconds
-                if i > 0:  # Skip the first iteration since we just checked
-                    detect_occupancy()  # Just check occupancy without publishing
+            for i in range(5):
+                if i > 0:
+                    detect_occupancy()
                 time.sleep(2)
-                
+
     except KeyboardInterrupt:
         print("Exiting...")
     except Exception as e:
@@ -311,10 +279,12 @@ def main():
     finally:
         print("Disconnecting...")
         sense.clear()
-        disconnect_future = mqtt_connection.disconnect()
-        disconnect_future.result()
+        mqtt_connection.disconnect().result()
         GPIO.cleanup()
         print("Cleanup complete")
 
 if __name__ == "__main__":
     main()
+user_id = "user_1"  # This would come from user authentication in a real app
+retrieved_settings = get_user_preferences(user_id, WORKSPACE_ID)
+comfort_settings.update(retrieved_settings)  # Update with any stored preferences

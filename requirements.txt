@@ -1,0 +1,17 @@
+# requirements.txt
+# AWS IoT SDK
+awsiotsdk>=1.10.0
+AWSIoTPythonSDK>=1.5.0
+
+# Hardware interfaces
+RPi.GPIO>=0.7.0
+sense-hat>=2.3.0
+Adafruit_DHT>=1.4.0
+adafruit-circuitpython-dht>=3.6.0
+
+# AWS SDK
+boto3>=1.17.0
+botocore>=1.20.0
+
+# Utilities
+requests>=2.25.1
