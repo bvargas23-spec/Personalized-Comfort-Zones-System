@@ -148,10 +148,11 @@
   </div>
 
   <script type="module">
-    import { savePreferences } from './api_gateway.js';
+    import { savePreferences, getCurrentTelemetry } from './api_gateway.js';
 
     const userId = 'user_1';
     const thingName = 'PCZS';
+    const workspaceIdInput = document.getElementById('workspace-id');
 
     const tempInput = document.getElementById('preferred-temp');
     const tempThreshInput = document.getElementById('temp-threshold');
@@ -167,7 +168,7 @@
       const preferences = {
         operation: 'update_preferences',
         user_id: userId,
-        workspace_id: document.getElementById('workspace-id').value,
+        workspace_id: workspaceIdInput.value,
         preferences: {
           preferred_temp: parseFloat(tempInput.value),
           temp_threshold: parseFloat(tempThreshInput.value),
@@ -178,7 +179,22 @@
       };
       await savePreferences(preferences);
     });
+
+    async function updateTelemetry() {
+      const data = await getCurrentTelemetry(workspaceIdInput.value);
+      if (data) {
+        document.getElementById('current-temp').textContent = data.temperature;
+        document.getElementById('current-humidity').textContent = data.humidity;
+        document.getElementById('current-occupancy').textContent = data.occupied ? 'Occupied' : 'Unoccupied';
+        document.getElementById('fan-status').textContent = data.fan_state ? 'ON' : 'OFF';
+      }
+    }
+
+    // Poll telemetry every 10 seconds
+    setInterval(updateTelemetry, 10000);
+    updateTelemetry(); // Load immediately on page load
   </script>
+
   <script type="module" src="api_gateway.js"></script>
 
 </body>
