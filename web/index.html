@@ -143,39 +143,43 @@
         <input type="range" id="humidity-threshold" min="5" max="20" step="1" value="10">
       </div>
 
-      <button onclick="savePreferences()">Save Preferences</button>
+      <button id="save-btn">Save Preferences</button>
     </div>
   </div>
 
-  <script>
-    // Simple endpoint integration (replace with actual API calls as needed)
-    const API_ENDPOINT = '<your-api-gateway-url>'; // Optional, for Lambda calls
+  <script type="module">
+    import { savePreferences } from './api_gateway.js';
 
-    const temp = document.getElementById("preferred-temp");
-    const tempThresh = document.getElementById("temp-threshold");
-    const hum = document.getElementById("preferred-humidity");
-    const humThresh = document.getElementById("humidity-threshold");
+    const userId = 'user_1';
+    const thingName = 'PCZS';
 
-    const tempVal = document.getElementById("temp-val");
-    const tempThreshVal = document.getElementById("temp-thresh-val");
-    const humVal = document.getElementById("humidity-val");
-    const humThreshVal = document.getElementById("humidity-thresh-val");
+    const tempInput = document.getElementById('preferred-temp');
+    const tempThreshInput = document.getElementById('temp-threshold');
+    const humInput = document.getElementById('preferred-humidity');
+    const humThreshInput = document.getElementById('humidity-threshold');
 
-    temp.oninput = () => tempVal.textContent = temp.value;
-    tempThresh.oninput = () => tempThreshVal.textContent = tempThresh.value;
-    hum.oninput = () => humVal.textContent = hum.value;
-    humThresh.oninput = () => humThreshVal.textContent = humThresh.value;
+    tempInput.oninput = () => document.getElementById('temp-val').textContent = tempInput.value;
+    tempThreshInput.oninput = () => document.getElementById('temp-thresh-val').textContent = tempThreshInput.value;
+    humInput.oninput = () => document.getElementById('humidity-val').textContent = humInput.value;
+    humThreshInput.oninput = () => document.getElementById('humidity-thresh-val').textContent = humThreshInput.value;
 
-    function savePreferences() {
-      alert("Preferences saved (mock function). Hook this up to your API Gateway + Lambda!");
-    }
-
-    // Mock initial values — replace with real telemetry
-    document.getElementById("current-temp").textContent = "22.8";
-    document.getElementById("current-humidity").textContent = "44";
-    document.getElementById("current-occupancy").textContent = "Occupied";
-    document.getElementById("fan-status").textContent = "OFF";
+    document.getElementById('save-btn').addEventListener('click', async () => {
+      const preferences = {
+        operation: 'update_preferences',
+        user_id: userId,
+        workspace_id: document.getElementById('workspace-id').value,
+        preferences: {
+          preferred_temp: parseFloat(tempInput.value),
+          temp_threshold: parseFloat(tempThreshInput.value),
+          preferred_humidity: parseInt(humInput.value),
+          humidity_threshold: parseInt(humThreshInput.value)
+        },
+        thing_name: thingName
+      };
+      await savePreferences(preferences);
+    });
   </script>
+  <script type="module" src="api_gateway.js"></script>
 
 </body>
 </html>
