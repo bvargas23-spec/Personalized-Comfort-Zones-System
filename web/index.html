@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Personalized Comfort Zones System</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f7f9;
+      color: #2c3e50;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      background-color: #34495e;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+      font-size: 1.6rem;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 1rem;
+    }
+
+    .card {
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: 1.4rem;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 0.5rem;
+    }
+
+    .slider-group {
+      margin: 1rem 0;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    input[type=range] {
+      width: 100%;
+    }
+
+    select, button {
+      padding: 0.5rem;
+      font-size: 1rem;
+      border-radius: 6px;
+      margin-top: 0.5rem;
+    }
+
+    select {
+      border: 1px solid #ccc;
+      width: 100%;
+      margin-bottom: 1rem;
+    }
+
+    button {
+      background-color: #2ecc71;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #27ae60;
+    }
+
+    .status-box {
+      background-color: #ecfdf5;
+      border-left: 5px solid #2ecc71;
+      padding: 1rem;
+      border-radius: 10px;
+    }
+
+    .status-box p {
+      margin: 0.5rem 0;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    Personalized Comfort Zones System
+  </header>
+
+  <div class="container">
+
+    <div class="card status-box">
+      <h2>Current Conditions</h2>
+      <p>Temperature: <span id="current-temp">--</span>°C</p>
+      <p>Humidity: <span id="current-humidity">--</span>%</p>
+      <p>Workspace Status: <span id="current-occupancy">--</span></p>
+      <p>Fan Status: <span id="fan-status">--</span></p>
+    </div>
+
+    <div class="card">
+      <h2>Your Comfort Preferences</h2>
+
+      <label for="workspace-id">Workspace:</label>
+      <select id="workspace-id">
+        <option value="workspace_1">Desk 1</option>
+      </select>
+
+      <div class="slider-group">
+        <label for="preferred-temp">Preferred Temperature: <span id="temp-val">23.0</span>°C</label>
+        <input type="range" id="preferred-temp" min="18" max="30" step="0.5" value="23.0">
+      </div>
+
+      <div class="slider-group">
+        <label for="temp-threshold">Temperature Tolerance: &plusmn;<span id="temp-thresh-val">1.0</span>°C</label>
+        <input type="range" id="temp-threshold" min="0.5" max="5" step="0.5" value="1.0">
+      </div>
+
+      <div class="slider-group">
+        <label for="preferred-humidity">Preferred Humidity: <span id="humidity-val">50</span>%</label>
+        <input type="range" id="preferred-humidity" min="30" max="70" step="1" value="50">
+      </div>
+
+      <div class="slider-group">
+        <label for="humidity-threshold">Humidity Tolerance: &plusmn;<span id="humidity-thresh-val">10</span>%</label>
+        <input type="range" id="humidity-threshold" min="5" max="20" step="1" value="10">
+      </div>
+
+      <button onclick="savePreferences()">Save Preferences</button>
+    </div>
+  </div>
+
+  <script>
+    // Simple endpoint integration (replace with actual API calls as needed)
+    const API_ENDPOINT = '<your-api-gateway-url>'; // Optional, for Lambda calls
+
+    const temp = document.getElementById("preferred-temp");
+    const tempThresh = document.getElementById("temp-threshold");
+    const hum = document.getElementById("preferred-humidity");
+    const humThresh = document.getElementById("humidity-threshold");
+
+    const tempVal = document.getElementById("temp-val");
+    const tempThreshVal = document.getElementById("temp-thresh-val");
+    const humVal = document.getElementById("humidity-val");
+    const humThreshVal = document.getElementById("humidity-thresh-val");
+
+    temp.oninput = () => tempVal.textContent = temp.value;
+    tempThresh.oninput = () => tempThreshVal.textContent = tempThresh.value;
+    hum.oninput = () => humVal.textContent = hum.value;
+    humThresh.oninput = () => humThreshVal.textContent = humThresh.value;
+
+    function savePreferences() {
+      alert("Preferences saved (mock function). Hook this up to your API Gateway + Lambda!");
+    }
+
+    // Mock initial values — replace with real telemetry
+    document.getElementById("current-temp").textContent = "22.8";
+    document.getElementById("current-humidity").textContent = "44";
+    document.getElementById("current-occupancy").textContent = "Occupied";
+    document.getElementById("fan-status").textContent = "OFF";
+  </script>
+
+</body>
+</html>
