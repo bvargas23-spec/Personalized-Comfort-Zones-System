@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Personalized Comfort Zones System</title>
+  <!-- Include Chart.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -92,6 +94,32 @@
       margin: 0.5rem 0;
     }
 
+    .chart-container {
+      position: relative;
+      height: 300px;
+      width: 100%;
+      margin-top: 1.5rem;
+    }
+
+    .tabs {
+      display: flex;
+      margin-bottom: 1rem;
+    }
+
+    .tab {
+      padding: 0.5rem 1rem;
+      background-color: #eee;
+      border: none;
+      border-radius: 6px 6px 0 0;
+      margin-right: 0.5rem;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background-color: #2ecc71;
+      color: white;
+    }
+
     @media (max-width: 600px) {
       .container {
         padding: 1rem;
@@ -106,6 +134,20 @@
   </header>
 
   <div class="container">
+
+    <div class="card">
+      <h2>Environment Monitor</h2>
+      
+      <div class="tabs">
+        <button class="tab active" data-chart="temperature">Temperature</button>
+        <button class="tab" data-chart="humidity">Humidity</button>
+        <button class="tab" data-chart="combined">Combined</button>
+      </div>
+      
+      <div class="chart-container">
+        <canvas id="sensorChart"></canvas>
+      </div>
+    </div>
 
     <div class="card status-box">
       <h2>Current Conditions</h2>
@@ -160,6 +202,127 @@
     humInput.oninput = () => document.getElementById('humidity-val').textContent = humInput.value;
     humThreshInput.oninput = () => document.getElementById('humidity-thresh-val').textContent = humThreshInput.value;
 
+    // Chart setup
+    const ctx = document.getElementById('sensorChart').getContext('2d');
+    let sensorChart;
+    
+    // Sensor data history
+    const sensorData = {
+      timestamps: [],
+      temperature: [],
+      humidity: [],
+      preferredTemp: [],
+      preferredHumidity: []
+    };
+    
+    // Initialize chart
+    function initChart(type = 'temperature') {
+      const datasets = [];
+      
+      if (type === 'temperature' || type === 'combined') {
+        datasets.push({
+          label: 'Temperature (°C)',
+          data: sensorData.temperature,
+          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgba(255, 99, 132, 0.1)',
+          fill: true,
+          tension: 0.4
+        });
+        
+        datasets.push({
+          label: 'Preferred Temperature',
+          data: sensorData.preferredTemp,
+          borderColor: 'rgba(255, 99, 132, 0.5)',
+          borderDash: [5, 5],
+          fill: false,
+          pointRadius: 0
+        });
+      }
+      
+      if (type === 'humidity' || type === 'combined') {
+        datasets.push({
+          label: 'Humidity (%)',
+          data: sensorData.humidity,
+          borderColor: 'rgb(54, 162, 235)',
+          backgroundColor: 'rgba(54, 162, 235, 0.1)',
+          fill: true,
+          tension: 0.4,
+          yAxisID: type === 'combined' ? 'y1' : 'y'
+        });
+        
+        datasets.push({
+          label: 'Preferred Humidity',
+          data: sensorData.preferredHumidity,
+          borderColor: 'rgba(54, 162, 235, 0.5)',
+          borderDash: [5, 5],
+          fill: false,
+          pointRadius: 0,
+          yAxisID: type === 'combined' ? 'y1' : 'y'
+        });
+      }
+      
+      // Destroy previous chart if it exists
+      if (sensorChart) {
+        sensorChart.destroy();
+      }
+      
+      // Create new chart
+      sensorChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: sensorData.timestamps,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: {
+            duration: 500
+          },
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: 'Time'
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: type === 'temperature' ? 'Temperature (°C)' : 'Humidity (%)'
+              },
+              min: type === 'temperature' ? 15 : 20,
+              max: type === 'temperature' ? 35 : 80
+            },
+            ...(type === 'combined' ? {
+              y1: {
+                position: 'right',
+                title: {
+                  display: true,
+                  text: 'Humidity (%)'
+                },
+                min: 20,
+                max: 80,
+                grid: {
+                  drawOnChartArea: false
+                }
+              }
+            } : {})
+          }
+        }
+      });
+    }
+    
+    // Tab switching
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        initChart(tab.dataset.chart);
+      });
+    });
+    
     // API client functions
     const userId = 'user_1';
     const thingName = 'PCZS';
@@ -180,16 +343,53 @@
     async function updateTelemetry() {
       const data = await getCurrentTelemetry(workspaceIdInput.value);
       if (data) {
+        // Update current readings
         document.getElementById('current-temp').textContent = data.temperature;
         document.getElementById('current-humidity').textContent = data.humidity;
         document.getElementById('current-occupancy').textContent = data.occupied ? 'Occupied' : 'Unoccupied';
         document.getElementById('fan-status').textContent = data.fan_state ? 'ON' : 'OFF';
+        
+        // Add data to chart history
+        const timestamp = new Date();
+        const timeString = timestamp.getHours() + ':' + 
+                          (timestamp.getMinutes() < 10 ? '0' : '') + timestamp.getMinutes();
+        
+        // Only store the last 12 readings (2 hours at 10-min intervals)
+        if (sensorData.timestamps.length > 12) {
+          sensorData.timestamps.shift();
+          sensorData.temperature.shift();
+          sensorData.humidity.shift();
+          sensorData.preferredTemp.shift();
+          sensorData.preferredHumidity.shift();
+        }
+        
+        sensorData.timestamps.push(timeString);
+        sensorData.temperature.push(data.temperature);
+        sensorData.humidity.push(data.humidity);
+        sensorData.preferredTemp.push(parseFloat(tempInput.value));
+        sensorData.preferredHumidity.push(parseInt(humInput.value));
+        
+        // Update chart
+        if (sensorChart) {
+          sensorChart.update();
+        }
       }
     }
 
+    // Load preferences and initialize chart
+    document.addEventListener('DOMContentLoaded', async function() {
+      // Get user preferences
+      const preferences = await getPreferences(userId, workspaceIdInput.value);
+      
+      // Initialize chart with default type
+      initChart('temperature');
+      
+      // Load initial telemetry
+      await updateTelemetry();
+    });
+
     // Poll telemetry every 10 seconds
     setInterval(updateTelemetry, 10000);
-    updateTelemetry(); // Load immediately on page load
   </script>
 
   <script src="api_gateway.js"></script>
