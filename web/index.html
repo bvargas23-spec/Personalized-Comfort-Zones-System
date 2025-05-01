@@ -188,7 +188,66 @@
       <button id="save-btn">Save Preferences</button>
     </div>
   </div>
-
+  // Generate mock data for testing
+  function generateMockData() {
+    const now = new Date();
+    const mockData = {
+      timestamps: [],
+      temperature: [],
+      humidity: [],
+      preferredTemp: [],
+      preferredHumidity: []
+    };
+    
+    // Generate 12 data points (2 hours of data)
+    for (let i = 0; i < 12; i++) {
+      const time = new Date(now.getTime() - (11-i) * 10 * 60000); // 10 minute intervals
+      const timeString = time.getHours() + ':' + (time.getMinutes() < 10 ? '0' : '') + time.getMinutes();
+      
+      mockData.timestamps.push(timeString);
+      mockData.temperature.push(22 + Math.random() * 3); // Random temperature 22-25°C
+      mockData.humidity.push(45 + Math.random() * 10); // Random humidity 45-55%
+      mockData.preferredTemp.push(23);
+      mockData.preferredHumidity.push(50);
+    }
+    
+    return mockData;
+  }
+  
+  // Use mock data if running locally (without API connection)
+  if (!window.getCurrentTelemetry) {
+    console.log('API not detected, using mock data');
+    window.sensorData = generateMockData();
+    initChart('temperature');
+    
+    // Simulate updates
+    setInterval(() => {
+      const now = new Date();
+      const timeString = now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+      
+      sensorData.timestamps.push(timeString);
+      sensorData.temperature.push(22 + Math.random() * 3);
+      sensorData.humidity.push(45 + Math.random() * 10);
+      sensorData.preferredTemp.push(23);
+      sensorData.preferredHumidity.push(50);
+      
+      if (sensorData.timestamps.length > 12) {
+        sensorData.timestamps.shift();
+        sensorData.temperature.shift();
+        sensorData.humidity.shift();
+        sensorData.preferredTemp.shift();
+        sensorData.preferredHumidity.shift();
+      }
+      
+      sensorChart.update();
+      
+      // Update current readings
+      document.getElementById('current-temp').textContent = sensorData.temperature[sensorData.temperature.length - 1].toFixed(1);
+      document.getElementById('current-humidity').textContent = sensorData.humidity[sensorData.humidity.length - 1].toFixed(1);
+      document.getElementById('current-occupancy').textContent = Math.random() > 0.3 ? 'Occupied' : 'Unoccupied';
+      document.getElementById('fan-state').textContent = Math.random() > 0.5 ? 'ON' : 'OFF';
+    }, 10000);
+  }
   <script>
     // Slider value display updates
     const tempInput = document.getElementById('preferred-temp');
