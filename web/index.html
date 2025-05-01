@@ -147,36 +147,33 @@
     </div>
   </div>
 
-  <script type="module">
-    import { savePreferences, getCurrentTelemetry } from './api_gateway.js';
-
-    const userId = 'user_1';
-    const thingName = 'PCZS';
-    const workspaceIdInput = document.getElementById('workspace-id');
-
+  <script>
+    // Slider value display updates
     const tempInput = document.getElementById('preferred-temp');
     const tempThreshInput = document.getElementById('temp-threshold');
     const humInput = document.getElementById('preferred-humidity');
     const humThreshInput = document.getElementById('humidity-threshold');
-
+    const workspaceIdInput = document.getElementById('workspace-id');
+    
     tempInput.oninput = () => document.getElementById('temp-val').textContent = tempInput.value;
     tempThreshInput.oninput = () => document.getElementById('temp-thresh-val').textContent = tempThreshInput.value;
     humInput.oninput = () => document.getElementById('humidity-val').textContent = humInput.value;
     humThreshInput.oninput = () => document.getElementById('humidity-thresh-val').textContent = humThreshInput.value;
 
+    // API client functions
+    const userId = 'user_1';
+    const thingName = 'PCZS';
+    
     document.getElementById('save-btn').addEventListener('click', async () => {
       const preferences = {
-        operation: 'update_preferences',
         user_id: userId,
         workspace_id: workspaceIdInput.value,
-        preferences: {
-          preferred_temp: parseFloat(tempInput.value),
-          temp_threshold: parseFloat(tempThreshInput.value),
-          preferred_humidity: parseInt(humInput.value),
-          humidity_threshold: parseInt(humThreshInput.value)
-        },
-        thing_name: thingName
+        preferred_temp: parseFloat(tempInput.value),
+        temp_threshold: parseFloat(tempThreshInput.value),
+        preferred_humidity: parseInt(humInput.value),
+        humidity_threshold: parseInt(humThreshInput.value)
       };
+      
       await savePreferences(preferences);
     });
 
@@ -195,7 +192,7 @@
     updateTelemetry(); // Load immediately on page load
   </script>
 
-  <script type="module" src="api_gateway.js"></script>
+  <script src="api_gateway.js"></script>
 
 </body>
 </html>
