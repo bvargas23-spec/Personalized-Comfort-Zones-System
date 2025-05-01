@@ -2,7 +2,8 @@
 import json
 import boto3
 import decimal
-from boto3.dynamodb.conditions import Key
+import datetime
+from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 
 # Initialize DynamoDB client
@@ -34,6 +35,9 @@ def lambda_handler(event, context):
             return get_latest_telemetry(event)
         elif http_method == 'POST':
             return store_telemetry(event)
+    elif path == '/telemetry/history':
+        if http_method == 'GET':
+            return get_telemetry_history(event)
 
     return {
         'statusCode': 404,
@@ -104,6 +108,49 @@ def store_telemetry(event):
         }
     except Exception as e:
         print(f"Error storing telemetry: {e}")
+        return {
+            'statusCode': 500,
+            'headers': CORS_HEADERS,
+            'body': json.dumps({'error': str(e)})
+        }
+
+def get_telemetry_history(event):
+    try:
+        query_params = event.get('queryStringParameters', {}) or {}
+        workspace_id = query_params.get('workspace_id')
+        hours = int(query_params.get('hours', 24))
+        
+        if not workspace_id:
+            return {
+                'statusCode': 400,
+                'headers': CORS_HEADERS,
+                'body': json.dumps({'error': 'Missing required parameter: workspace_id'})
+            }
+
+        # Calculate time threshold (e.g., last 24 hours)
+        time_threshold = (datetime.datetime.now() - datetime.timedelta(hours=hours)).isoformat()
+
+        # Query telemetry history
+        response = telemetry_table.query(
+            KeyConditionExpression=Key('workspace_id').eq(workspace_id) & 
+                                   Key('timestamp').gt(time_threshold),
+            ScanIndexForward=True  # Sort in ascending order (oldest first)
+        )
+
+        if not response['Items']:
+            return {
+                'statusCode': 404,
+                'headers': CORS_HEADERS,
+                'body': json.dumps([])
+            }
+
+        return {
+            'statusCode': 200,
+            'headers': CORS_HEADERS,
+            'body': json.dumps(response['Items'], cls=DecimalEncoder)
+        }
+    except Exception as e:
+        print(f"Error getting telemetry history: {e}")
         return {
             'statusCode': 500,
             'headers': CORS_HEADERS,
