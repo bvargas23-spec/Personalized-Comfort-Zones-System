@@ -151,7 +151,7 @@
 
     <div class="card status-box">
       <h2>Current Conditions</h2>
-      <p>Temperature: <span id="current-temp">--</span>°C</p>
+      <p>Temperature: <span id="current-temp">--</span>°F</p>
       <p>Humidity: <span id="current-humidity">--</span>%</p>
       <p>Workspace Status: <span id="current-occupancy">--</span></p>
       <p>Fan Status: <span id="fan-status">--</span></p>
@@ -166,13 +166,13 @@
       </select>
 
       <div class="slider-group">
-        <label for="preferred-temp">Preferred Temperature: <span id="temp-val">23.0</span>°C</label>
-        <input type="range" id="preferred-temp" min="18" max="30" step="0.5" value="23.0">
+        <label for="preferred-temp">Preferred Temperature: <span id="temp-val">73.4</span>°F</label>
+        <input type="range" id="preferred-temp" min="64" max="86" step="0.5" value="73.4">
       </div>
 
       <div class="slider-group">
-        <label for="temp-threshold">Temperature Tolerance: &plusmn;<span id="temp-thresh-val">1.0</span>°C</label>
-        <input type="range" id="temp-threshold" min="0.5" max="5" step="0.5" value="1.0">
+        <label for="temp-threshold">Temperature Tolerance: &plusmn;<span id="temp-thresh-val">1.8</span>°F</label>
+        <input type="range" id="temp-threshold" min="0.9" max="9" step="0.9" value="1.8">
       </div>
 
       <div class="slider-group">
@@ -202,6 +202,22 @@
     humInput.oninput = () => document.getElementById('humidity-val').textContent = humInput.value;
     humThreshInput.oninput = () => document.getElementById('humidity-thresh-val').textContent = humThreshInput.value;
 
+    // Utility functions for temperature conversion
+    function celsiusToFahrenheit(celsius) {
+      return (celsius * 9/5) + 32;
+    }
+    
+    function fahrenheitToCelsius(fahrenheit) {
+      return (fahrenheit - 32) * 5/9;
+    }
+    
+    // Format time in 12-hour format
+    function formatTimeIn12Hour(hours, minutes) {
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const hour12 = hours % 12 || 12; // Convert 0 to 12 for 12 AM
+      return `${hour12}:${minutes < 10 ? '0' : ''}${minutes} ${period}`;
+    }
+
     // Chart setup
     const ctx = document.getElementById('sensorChart').getContext('2d');
     let sensorChart;
@@ -209,10 +225,12 @@
     // Sensor data history
     const sensorData = {
       timestamps: [],
-      temperature: [],
+      temperature: [], // in Fahrenheit
       humidity: [],
       preferredTemp: [],
-      preferredHumidity: []
+      preferredHumidity: [],
+      occupied: [],
+      fanState: []
     };
     
     // Initialize chart
@@ -221,7 +239,7 @@
       
       if (type === 'temperature' || type === 'combined') {
         datasets.push({
-          label: 'Temperature (°C)',
+          label: 'Temperature (°F)',
           data: sensorData.temperature,
           borderColor: 'rgb(255, 99, 132)',
           backgroundColor: 'rgba(255, 99, 132, 0.1)',
@@ -289,10 +307,10 @@
             y: {
               title: {
                 display: true,
-                text: type === 'temperature' ? 'Temperature (°C)' : 'Humidity (%)'
+                text: type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)'
               },
-              min: type === 'temperature' ? 15 : 20,
-              max: type === 'temperature' ? 35 : 80
+              min: type === 'temperature' ? 60 : 20, // Fahrenheit range
+              max: type === 'temperature' ? 90 : 80
             },
             ...(type === 'combined' ? {
               y1: {
@@ -331,126 +349,146 @@
       const preferences = {
         user_id: userId,
         workspace_id: workspaceIdInput.value,
-        preferred_temp: parseFloat(tempInput.value),
-        temp_threshold: parseFloat(tempThreshInput.value),
+        preferred_temp: fahrenheitToCelsius(parseFloat(tempInput.value)), // Store in Celsius in backend
+        temp_threshold: fahrenheitToCelsius(parseFloat(tempThreshInput.value)), // Store in Celsius in backend
         preferred_humidity: parseInt(humInput.value),
         humidity_threshold: parseInt(humThreshInput.value)
       };
       
-      await savePreferences(preferences);
+      // If API exists, save preferences
+      if (typeof savePreferences === 'function') {
+        await savePreferences(preferences);
+      } else {
+        console.log('Preferences would be saved:', preferences);
+        alert('Preferences saved in demo mode!');
+      }
     });
 
     async function updateTelemetry() {
-      const data = await getCurrentTelemetry(workspaceIdInput.value);
-      if (data) {
-        // Update current readings
-        document.getElementById('current-temp').textContent = data.temperature;
-        document.getElementById('current-humidity').textContent = data.humidity;
-        document.getElementById('current-occupancy').textContent = data.occupied ? 'Occupied' : 'Unoccupied';
-        document.getElementById('fan-status').textContent = data.fan_state ? 'ON' : 'OFF';
-        
-        // Add data to chart history
-        const timestamp = new Date();
-        const timeString = timestamp.getHours() + ':' + 
-                          (timestamp.getMinutes() < 10 ? '0' : '') + timestamp.getMinutes();
-        
-        // Only store the last 12 readings (2 hours at 10-min intervals)
-        if (sensorData.timestamps.length > 12) {
-          sensorData.timestamps.shift();
-          sensorData.temperature.shift();
-          sensorData.humidity.shift();
-          sensorData.preferredTemp.shift();
-          sensorData.preferredHumidity.shift();
-        }
-        
-        sensorData.timestamps.push(timeString);
-        sensorData.temperature.push(data.temperature);
-        sensorData.humidity.push(data.humidity);
-        sensorData.preferredTemp.push(parseFloat(tempInput.value));
-        sensorData.preferredHumidity.push(parseInt(humInput.value));
-        
-        // Update chart
-        if (sensorChart) {
-          sensorChart.update();
+      if (typeof getCurrentTelemetry === 'function') {
+        const data = await getCurrentTelemetry(workspaceIdInput.value);
+        if (data) {
+          // Convert temperature to Fahrenheit for display
+          const tempF = celsiusToFahrenheit(data.temperature);
+          
+          // Update current readings
+          document.getElementById('current-temp').textContent = tempF.toFixed(1);
+          document.getElementById('current-humidity').textContent = data.humidity;
+          document.getElementById('current-occupancy').textContent = data.occupied ? 'Occupied' : 'Unoccupied';
+          document.getElementById('fan-status').textContent = data.fan_state ? 'ON' : 'OFF';
+          
+          // Add data to chart history
+          const timestamp = new Date();
+          const timeString = formatTimeIn12Hour(timestamp.getHours(), timestamp.getMinutes());
+          
+          // Only store the last 12 readings
+          if (sensorData.timestamps.length > 12) {
+            sensorData.timestamps.shift();
+            sensorData.temperature.shift();
+            sensorData.humidity.shift();
+            sensorData.preferredTemp.shift();
+            sensorData.preferredHumidity.shift();
+            sensorData.occupied.shift();
+            sensorData.fanState.shift();
+          }
+          
+          sensorData.timestamps.push(timeString);
+          sensorData.temperature.push(tempF);
+          sensorData.humidity.push(data.humidity);
+          sensorData.preferredTemp.push(parseFloat(tempInput.value));
+          sensorData.preferredHumidity.push(parseInt(humInput.value));
+          sensorData.occupied.push(data.occupied);
+          sensorData.fanState.push(data.fan_state);
+          
+          // Update chart
+          if (sensorChart) {
+            sensorChart.update();
+          }
         }
       }
     }
 
-    // Load preferences and initialize chart
+    // Load your mock data
+    function loadMockData() {
+      // Clear any existing data
+      sensorData.timestamps = [];
+      sensorData.temperature = [];
+      sensorData.humidity = [];
+      sensorData.preferredTemp = [];
+      sensorData.preferredHumidity = [];
+      sensorData.occupied = [];
+      sensorData.fanState = [];
+
+      // Add your mock data
+      const mockData = [
+        { time: "2:00 PM", tempC: 23.7, humidity: 54.2, occupied: true, fanState: false },
+        { time: "2:05 PM", tempC: 23.9, humidity: 54.5, occupied: true, fanState: false },
+        { time: "2:10 PM", tempC: 24.2, humidity: 55.1, occupied: true, fanState: true },
+        { time: "2:15 PM", tempC: 24.5, humidity: 56.0, occupied: true, fanState: true },
+        { time: "2:20 PM", tempC: 24.8, humidity: 56.8, occupied: false, fanState: false },
+        { time: "2:25 PM", tempC: 24.6, humidity: 56.1, occupied: false, fanState: false },
+        { time: "2:30 PM", tempC: 24.3, humidity: 55.2, occupied: true, fanState: true }
+      ];
+
+      // Get preferred values from sliders
+      const preferredTemp = parseFloat(tempInput.value);
+      const preferredHumidity = parseInt(humInput.value);
+
+      // Process mock data
+      mockData.forEach(item => {
+        sensorData.timestamps.push(item.time);
+        // Convert Celsius to Fahrenheit for display
+        sensorData.temperature.push(celsiusToFahrenheit(item.tempC));
+        sensorData.humidity.push(item.humidity);
+        sensorData.preferredTemp.push(preferredTemp);
+        sensorData.preferredHumidity.push(preferredHumidity);
+        sensorData.occupied.push(item.occupied);
+        sensorData.fanState.push(item.fanState);
+      });
+
+      // Set current status display from last data point
+      const lastDataPoint = mockData[mockData.length - 1];
+      document.getElementById('current-temp').textContent = celsiusToFahrenheit(lastDataPoint.tempC).toFixed(1);
+      document.getElementById('current-humidity').textContent = lastDataPoint.humidity;
+      document.getElementById('current-occupancy').textContent = lastDataPoint.occupied ? 'Occupied' : 'Unoccupied';
+      document.getElementById('fan-status').textContent = lastDataPoint.fanState ? 'ON' : 'OFF';
+    }
+
+    // Initialize the dashboard
     document.addEventListener('DOMContentLoaded', async function() {
-      // Get user preferences
-      const preferences = await getPreferences(userId, workspaceIdInput.value);
+      // Load mock data
+      loadMockData();
       
       // Initialize chart with default type
       initChart('temperature');
       
-      // Load initial telemetry
-      await updateTelemetry();
-    });
-
-    // Generate mock data for testing
-    function generateMockData() {
-      const now = new Date();
-      const mockData = {
-        timestamps: [],
-        temperature: [],
-        humidity: [],
-        preferredTemp: [],
-        preferredHumidity: []
-      };
-      
-      // Generate 12 data points (2 hours of data)
-      for (let i = 0; i < 12; i++) {
-        const time = new Date(now.getTime() - (11-i) * 10 * 60000); // 10 minute intervals
-        const timeString = time.getHours() + ':' + (time.getMinutes() < 10 ? '0' : '') + time.getMinutes();
-        
-        mockData.timestamps.push(timeString);
-        mockData.temperature.push(22 + Math.random() * 3); // Random temperature 22-25°C
-        mockData.humidity.push(45 + Math.random() * 10); // Random humidity 45-55%
-        mockData.preferredTemp.push(23);
-        mockData.preferredHumidity.push(50);
+      // Try to load real data if API is available
+      if (typeof getPreferences === 'function') {
+        const preferences = await getPreferences(userId, workspaceIdInput.value);
+        if (preferences) {
+          // Update UI with retrieved preferences (convert Celsius to Fahrenheit)
+          tempInput.value = celsiusToFahrenheit(preferences.preferred_temp);
+          document.getElementById('temp-val').textContent = tempInput.value;
+          
+          tempThreshInput.value = celsiusToFahrenheit(preferences.temp_threshold);
+          document.getElementById('temp-thresh-val').textContent = tempThreshInput.value;
+          
+          humInput.value = preferences.preferred_humidity;
+          document.getElementById('humidity-val').textContent = humInput.value;
+          
+          humThreshInput.value = preferences.humidity_threshold;
+          document.getElementById('humidity-thresh-val').textContent = humThreshInput.value;
+        }
       }
       
-      return mockData;
-    }
-    
-    // Use mock data if running locally (without API connection)
-    if (typeof getCurrentTelemetry !== 'function') {
-      console.log('API not detected, using mock data');
-      window.sensorData = generateMockData();
-      initChart('temperature');
-      
-      // Simulate updates
-      setInterval(() => {
-        const now = new Date();
-        const timeString = now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+      if (typeof getCurrentTelemetry === 'function') {
+        // Load initial telemetry
+        await updateTelemetry();
         
-        sensorData.timestamps.push(timeString);
-        sensorData.temperature.push(22 + Math.random() * 3);
-        sensorData.humidity.push(45 + Math.random() * 10);
-        sensorData.preferredTemp.push(23);
-        sensorData.preferredHumidity.push(50);
-        
-        if (sensorData.timestamps.length > 12) {
-          sensorData.timestamps.shift();
-          sensorData.temperature.shift();
-          sensorData.humidity.shift();
-          sensorData.preferredTemp.shift();
-          sensorData.preferredHumidity.shift();
-        }
-        
-        sensorChart.update();
-        
-        // Update current readings
-        document.getElementById('current-temp').textContent = sensorData.temperature[sensorData.temperature.length - 1].toFixed(1);
-        document.getElementById('current-humidity').textContent = sensorData.humidity[sensorData.humidity.length - 1].toFixed(1);
-        document.getElementById('current-occupancy').textContent = Math.random() > 0.3 ? 'Occupied' : 'Unoccupied';
-        document.getElementById('fan-state').textContent = Math.random() > 0.5 ? 'ON' : 'OFF';
-      }, 10000);
-    } else {
-      // Poll telemetry every 10 seconds if real API is available
-      setInterval(updateTelemetry, 10000);
-    }
+        // Poll telemetry every 10 seconds
+        setInterval(updateTelemetry, 10000);
+      }
+    });
   </script>
 
   <script src="api_gateway.js"></script>
